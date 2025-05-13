@@ -2,11 +2,18 @@ import cv2
 import torch
 import numpy as np
 import mediapipe as mp
+import pickle
 from models.model import LSTMModel
 from utils.util import FingerTapDetector, calculate_angles, recognize_action
 
 # --- 메인 비디오 처리 루프 ---
 def process_video(cap, model, actions, seq_length, width, height, device):
+    # Load calibration for external camera
+    with open('./utils/camera_calibration.pkl', 'rb') as f:
+        calib_data = pickle.load(f)
+    camera_matrix = calib_data['camera_matrix'] # calibration
+    dist_coeffs = calib_data['dist_coeffs'] # calibration
+
     mp_hands = mp.solutions.hands
     mp_drawing = mp.solutions.drawing_utils
     hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.6, min_tracking_confidence=0.6)
@@ -19,6 +26,7 @@ def process_video(cap, model, actions, seq_length, width, height, device):
         ret, img = cap.read()
         if not ret:
             break
+        img = cv2.undistort(img, camera_matrix, dist_coeffs) # calibration
         img = cv2.flip(img, 1)
         result = hands.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
@@ -57,11 +65,11 @@ if __name__ == "__main__":
     features = 99
     num_classes = 4
     model = LSTMModel(input_size=features, hidden_size=64, num_classes=num_classes).to(device)
-    model.load_state_dict(torch.load('innopia_code/models/gesture_model.pth'))
+    model.load_state_dict(torch.load('models/gesture_model.pth'))
     model.to(device)
 
     actions = ['enter', 'setting', 'power on', 'power off']
     seq_length = 30
-    cap = cv2.VideoCapture(0) # CAM으로 연결
+    cap = cv2.VideoCapture(1) # CAM으로 연결 (0 is labtop, 1 is external_camera)
     width, height = 640, 480
     process_video(cap, model, actions, seq_length, width, height, device)
